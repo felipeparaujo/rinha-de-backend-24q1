@@ -3,24 +3,11 @@ package main
 import (
 	"context"
 	"log"
-	"sync"
 	"time"
 
+	"github.com/felipeparaujo/rinha-de-backend-24q1/api"
 	"github.com/jackc/pgx/v5"
 )
-
-type Cliente struct {
-	ID           int    `json:"id"`
-	Nome         string `json:"nome"`
-	Limite       int32  `json:"limite"`
-	SaldoInicial int32  `json:"saldo_inicial"`
-}
-
-type app struct {
-	conn *pgx.Conn
-	wg   sync.WaitGroup
-	ctx  context.Context
-}
 
 const maxRetries = 5
 
@@ -44,8 +31,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	a := &app{conn: conn, ctx: ctx}
-	if err := a.serveHTTP(); err != nil {
+	a := &api.App{Conn: conn, Ctx: ctx}
+	if err := a.ServeHTTP(); err != nil {
 		log.Fatal(err)
 	}
 }

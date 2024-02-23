@@ -4,21 +4,31 @@ services:
   api_1:
     container_name: api1
     hostname: api1
-    build: api/
+    working_dir: /opt/rinha
+    build:
+      context: .
+      dockerfile: ./api/Dockerfile
     environment:
       - PORT=8081
     ports:
       - 8081:8081
+    volumes:
+      - ./api:/opt/rinha/api
 
   api_2:
     container_name: api2
     hostname: api2
-    build: api/
+    working_dir: /opt/rinha
+    build:
+      context: .
+      dockerfile: ./api/Dockerfile
     environment:
       - PORT=8082
     ports:
       - 8082:8082
-      - 9002:9002
+      - 9040:9040 # debugger port
+    volumes:
+      - ./api:/opt/rinha/api
 
   lb:
     image: haproxy
@@ -40,4 +50,4 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - ./db/seed.sql:/docker-entrypoint-initdb.d/seed.sql
+      - ./db:/docker-entrypoint-initdb.d

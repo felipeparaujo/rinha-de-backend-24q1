@@ -1,13 +1,18 @@
-package main
+package api
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -17,7 +22,13 @@ const (
 	defaultShutdownPeriod = 30 * time.Second
 )
 
-func (a *app) serveHTTP() error {
+type App struct {
+	Conn *pgx.Conn
+	Ctx  context.Context
+	wg   sync.WaitGroup
+}
+
+func (a *App) ServeHTTP() error {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", os.Getenv("PORT")),
 		Handler:      a.routes(),
@@ -30,20 +41,26 @@ func (a *app) serveHTTP() error {
 	return srv.ListenAndServe()
 }
 
-func (a *app) routes() http.Handler {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("GET /clientes/{id}/extrato", a.extrato)
-	mux.HandleFunc("POST /clientes/{id}/transacoes", a.transacoes)
-
-	return mux
-}
-
-func (a *app) errorMessage(w http.ResponseWriter, r *http.Request, status int, message string) {
+func (a *App) errorMessage(w http.ResponseWriter, r *http.Request, status int, message string) {
 	message = strings.ToUpper(message[:1]) + message[1:]
 
 	err := JSON(w, status, map[string]string{"error": message})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+}
+
+func JSON(w http.ResponseWriter, status int, data any) error {
+	js, err := json.MarshalIndent(data, "", "\t")
+	if err != nil {
+		return err
+	}
+
+	js = append(js, '\n')
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(js)
+
+	return nil
 }
