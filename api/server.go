@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -41,16 +40,7 @@ func (a *App) ServeHTTP() error {
 	return srv.ListenAndServe()
 }
 
-func (a *App) errorMessage(w http.ResponseWriter, r *http.Request, status int, message string) {
-	message = strings.ToUpper(message[:1]) + message[1:]
-
-	err := JSON(w, status, map[string]string{"error": message})
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-}
-
-func JSON(w http.ResponseWriter, status int, data any) error {
+func JSON(w http.ResponseWriter, data any) error {
 	js, err := json.MarshalIndent(data, "", "\t")
 	if err != nil {
 		return err
@@ -59,7 +49,6 @@ func JSON(w http.ResponseWriter, status int, data any) error {
 	js = append(js, '\n')
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
 	w.Write(js)
 
 	return nil

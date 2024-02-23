@@ -1,7 +1,7 @@
 version: "3.5"
 
 services:
-  api_1:
+  api1:
     container_name: api1
     hostname: api1
     working_dir: /opt/rinha
@@ -14,8 +14,13 @@ services:
       - 8081:8081
     volumes:
       - ./api:/opt/rinha/api
+    deploy:
+      resources:
+        limits:
+          cpus: "0.6"
+          memory: "155MB"
 
-  api_2:
+  api2:
     container_name: api2
     hostname: api2
     working_dir: /opt/rinha
@@ -29,6 +34,11 @@ services:
       - 9040:9040 # debugger port
     volumes:
       - ./api:/opt/rinha/api
+    deploy:
+      resources:
+        limits:
+          cpus: "0.6"
+          memory: "155MB"
 
   lb:
     image: haproxy
@@ -38,6 +48,11 @@ services:
       - 9999:9999
     volumes:
       - ./haproxy:/usr/local/etc/haproxy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.17"
+          memory: "100MB"
 
   db:
     image: postgres:latest
@@ -51,3 +66,8 @@ services:
       - 5432:5432
     volumes:
       - ./db:/docker-entrypoint-initdb.d
+    deploy:
+      resources:
+        limits:
+          cpus: "0.13"
+          memory: "140MB"

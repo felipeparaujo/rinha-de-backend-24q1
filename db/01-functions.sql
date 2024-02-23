@@ -18,7 +18,7 @@ BEGIN
   -- Check if the new saldo is smaller than the limite
   SELECT limite INTO client_limite FROM clientes WHERE id = cliente_id;
   IF new_saldo < -1 * client_limite THEN
-      RAISE EXCEPTION 'Final saldo % is smaller than the limite %', new_saldo, client_limite;
+      RAISE EXCEPTION SQLSTATE '90001' USING MESSAGE = 'saldo seria menor que limite';
   END IF;
 
   -- Update the saldo in the clientes table

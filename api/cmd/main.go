@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const maxRetries = 5
+const maxRetries = 100
 
 func main() {
 	ctx := context.Background()
@@ -19,11 +19,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	retryCount := 0
 	conn, err := pgx.ConnectConfig(ctx, config)
-	for err != nil && retryCount < maxRetries {
+	for retryCount := 0; err != nil && retryCount < maxRetries; retryCount++ {
 		conn, err = pgx.ConnectConfig(ctx, config)
-		time.Sleep(1 * time.Second)
+		time.Sleep(250 * time.Millisecond)
 		retryCount++
 	}
 

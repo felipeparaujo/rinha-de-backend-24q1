@@ -9,6 +9,6 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY ./api ./api
-# RUN go build -o /usr/local/bin/api ./api/cmd
+RUN go build -o /usr/local/bin/api ./api/cmd
 
-ENTRYPOINT ["gow", "-s", "-r=false", "-w=/opt/rinha/api", "run", "./api/cmd", "--"]
+ENTRYPOINT ["api"]

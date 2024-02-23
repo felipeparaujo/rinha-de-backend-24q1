@@ -1,3 +1,5 @@
+ALTER DATABASE rinha SET log_error_verbosity to 'TERSE';
+
 CREATE TABLE clientes (
   id SERIAL PRIMARY KEY,
   nome VARCHAR(255) NOT NULL,

@@ -23,7 +23,7 @@ func main() {
 }
 
 func transacao() {
-	marshaled, err := json.Marshal(api.TransacoesRequest{Valor: 100, Tipo: "d", Descricao: "desc"})
+	marshaled, err := json.Marshal(api.TransacoesRequest{Valor: 1000000000, Tipo: "d", Descricao: "desc"})
 	r, err := http.DefaultClient.Post(fmt.Sprintf("%s/clientes/%d/transacoes", url, 1), contentType, bytes.NewBuffer(marshaled))
 	if err != nil {
 		log.Fatal(err)
