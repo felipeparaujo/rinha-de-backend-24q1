@@ -1,0 +1,42 @@
+version: "3.5"
+
+services:
+  api_1:
+    container_name: api1
+    hostname: api1
+    build: api/
+    environment:
+      - PORT=8081
+    ports:
+      - 8081:8081
+
+  api_2:
+    container_name: api2
+    hostname: api2
+    build: api/
+    environment:
+      - PORT=8082
+    ports:
+      - 8082:8082
+
+  lb:
+    image: haproxy
+    hostname: lb
+    container_name: lb
+    ports:
+      - 8080:8080
+    volumes:
+      - ./haproxy:/usr/local/etc/haproxy
+
+  db:
+    image: postgres:latest
+    hostname: db
+    container_name: db
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=admin
+      - POSTGRES_DB=rinha
+    ports:
+      - 5432:5432
+    volumes:
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/seed.sql
