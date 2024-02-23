@@ -1,15 +1,23 @@
 package api
 
-import "net/http"
+import (
+	"log"
+	"net/http"
+
+	"github.com/google/uuid"
+)
 
 type handler func(w http.ResponseWriter, r *http.Request) int
 
 func wrap(h handler) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		id := uuid.New()
+		log.Printf("started %s", id)
 		status := h(w, r)
 		if status != http.StatusOK {
 			w.WriteHeader(status)
 		}
+		log.Printf("ended %s", id)
 	}
 }
 

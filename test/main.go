@@ -7,23 +7,27 @@ import (
 	"io"
 	"log"
 	"net/http"
-
-	"github.com/felipeparaujo/rinha-de-backend-24q1/api"
 )
 
 const url = "http://localhost:9999"
 const contentType = "application/json"
 
 func main() {
-	log.Println("Transacao")
-	transacao()
+	// log.Println("Transacao")
+	// transacao()
 
 	log.Println("Extrato")
 	extrato()
 }
 
+type TransacoesRequest struct {
+	Valor     int32  `json:"valor"`
+	Tipo      string `json:"tipo"`
+	Descricao string `json:"descricao"`
+}
+
 func transacao() {
-	marshaled, err := json.Marshal(api.TransacoesRequest{Valor: 1000000000, Tipo: "d", Descricao: "desc"})
+	marshaled, err := json.Marshal(TransacoesRequest{Valor: 1, Tipo: "c", Descricao: "toma"})
 	r, err := http.DefaultClient.Post(fmt.Sprintf("%s/clientes/%d/transacoes", url, 1), contentType, bytes.NewBuffer(marshaled))
 	if err != nil {
 		log.Fatal(err)

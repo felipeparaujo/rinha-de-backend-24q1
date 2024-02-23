@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -24,6 +25,7 @@ const (
 type App struct {
 	Conn *pgx.Conn
 	Ctx  context.Context
+	Pool *pgxpool.Pool
 	wg   sync.WaitGroup
 }
 

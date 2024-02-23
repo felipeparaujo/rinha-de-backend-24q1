@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -33,6 +32,7 @@ type ExtratoTransacaoResponse struct {
 func validateID(id string) int {
 	idNum, err := strconv.Atoi(id)
 	if err != nil {
+		log.Print(err)
 		return http.StatusBadRequest
 	}
 
@@ -50,7 +50,7 @@ func (a *App) extrato(w http.ResponseWriter, r *http.Request) int {
 		return idStatus
 	}
 
-	rows, err := a.Conn.Query(
+	rows, err := a.Pool.Query(
 		a.Ctx, `
 		SELECT
 			c.saldo, c.limite, t.valor, t.tipo, t.descricao, t.realizada_em
@@ -101,20 +101,16 @@ type TransacoesRequest struct {
 
 func (t *TransacoesRequest) validate() int {
 	if t.Valor < 1 {
-		return http.StatusBadRequest
+		return http.StatusUnprocessableEntity
 	}
 
 	descLen := len(t.Descricao)
 	if descLen < 1 || descLen > 10 {
-		return http.StatusBadRequest
+		return http.StatusUnprocessableEntity
 	}
 
-	if t.Tipo == "d" {
-		// set to negative because it's a debit
-		t.Valor = -t.Valor
-		fmt.Print(t.Valor)
-	} else if t.Tipo != "c" {
-		return http.StatusBadRequest
+	if t.Tipo != "d" && t.Tipo != "c" {
+		return http.StatusUnprocessableEntity
 	}
 
 	return http.StatusOK
@@ -131,7 +127,6 @@ func (a *App) transacoes(w http.ResponseWriter, r *http.Request) int {
 	req := TransacoesRequest{}
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		log.Print(err)
 		return http.StatusBadRequest
 	}
 
@@ -146,7 +141,7 @@ func (a *App) transacoes(w http.ResponseWriter, r *http.Request) int {
 		return idStatus
 	}
 
-	rows, err := a.Conn.Query(a.Ctx, "SELECT * FROM process_transaction($1, $2, $3, $4)", id, req.Tipo, req.Descricao, req.Valor)
+	rows, err := a.Pool.Query(a.Ctx, "SELECT * FROM process_transaction($1, $2, $3, $4)", id, req.Tipo, req.Descricao, req.Valor)
 	if err != nil {
 		log.Print(err)
 		return http.StatusInternalServerError

@@ -13,7 +13,11 @@ BEGIN
   PERFORM * FROM clientes WHERE id = cliente_id FOR UPDATE;
 
   -- valor must have the correct sign depending on debit or credit
-  SELECT saldo + valor INTO new_saldo FROM clientes WHERE id = cliente_id;
+  IF tipo = 'c' THEN
+    SELECT saldo + valor INTO new_saldo FROM clientes WHERE id = cliente_id;
+  ELSIF tipo = 'd' THEN
+      SELECT saldo - valor INTO new_saldo FROM clientes WHERE id = cliente_id;
+  END IF;
 
   -- Check if the new saldo is smaller than the limite
   SELECT limite INTO client_limite FROM clientes WHERE id = cliente_id;
