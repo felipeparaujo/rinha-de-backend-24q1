@@ -18,13 +18,14 @@ services:
       - PORT=8082
     ports:
       - 8082:8082
+      - 9002:9002
 
   lb:
     image: haproxy
     hostname: lb
     container_name: lb
     ports:
-      - 8080:8080
+      - 9999:9999
     volumes:
       - ./haproxy:/usr/local/etc/haproxy
 
