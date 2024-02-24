@@ -16,3 +16,5 @@ CREATE TABLE transacoes (
   realizada_em TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_cliente FOREIGN KEY (cliente_id) REFERENCES clientes (id)
 );
+
+CREATE INDEX idx_realizada_em ON transacoes(realizada_em);

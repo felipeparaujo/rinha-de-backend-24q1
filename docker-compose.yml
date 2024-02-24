@@ -42,18 +42,18 @@ services:
           memory: "155MB"
 
   lb:
-    image: haproxy
+    image: nginx
     hostname: lb
     container_name: lb
     ports:
       - 9999:9999
     volumes:
-      - ./haproxy:/usr/local/etc/haproxy
+      - ./nginx:/etc/nginx
     deploy:
       resources:
         limits:
           cpus: "0.17"
-          memory: "100MB"
+          memory: "130MB"
 
   db:
     image: postgres:latest

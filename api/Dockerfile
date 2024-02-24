@@ -12,4 +12,6 @@ RUN go mod download
 COPY ./api ./api
 RUN go build -o /usr/local/bin/api ./api/cmd
 
+ENV GOMAXPROCS 3
+
 ENTRYPOINT ["/usr/bin/dumb-init", "--", "api"]

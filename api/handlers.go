@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrInvalidTransacoesRequest = errors.New("invalid request")
@@ -65,6 +64,7 @@ func (a *App) extrato(c *fiber.Ctx) error {
 		`,
 		id,
 	)
+	defer rows.Close()
 	if err != nil {
 		log.Print(err)
 		return c.SendStatus(http.StatusInternalServerError)
@@ -133,27 +133,19 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 	}
 
 	rows, err := a.pool.Query(c.Context(), "SELECT * FROM process_transaction($1, $2, $3, $4)", id, req.Tipo, req.Descricao, req.Valor)
+	defer rows.Close()
 	if err != nil {
 		log.Print(err)
 		return c.SendStatus(http.StatusInternalServerError)
 	}
 
-	if !rows.Next() {
-		var pgErr *pgconn.PgError
-		// error code for below withdrawl limit
-		if errors.As(rows.Err(), &pgErr) && pgErr.Code == "90001" {
+	resp := TransacoesResponse{}
+	for rows.Next() {
+		err = rows.Scan(&resp.Saldo, &resp.Limite)
+		// process_transaction uses -1 in Limite as a flag for overdraft
+		if err != nil || resp.Limite < 0 {
 			return c.SendStatus(http.StatusUnprocessableEntity)
 		}
-
-		// todo this happens when there's an underflow too
-		return c.SendStatus(http.StatusUnprocessableEntity)
-	}
-
-	resp := TransacoesResponse{}
-	err = rows.Scan(&resp.Saldo, &resp.Limite)
-	if err != nil {
-		log.Print(err)
-		return c.SendStatus(http.StatusUnprocessableEntity)
 	}
 
 	return c.Status(http.StatusOK).JSON(resp)
