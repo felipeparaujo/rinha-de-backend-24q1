@@ -5,6 +5,8 @@ services:
     container_name: api1
     hostname: api1
     working_dir: /opt/rinha
+    command:
+      - -port=8081
     build:
       context: .
       dockerfile: ./api/Dockerfile
@@ -24,14 +26,13 @@ services:
     container_name: api2
     hostname: api2
     working_dir: /opt/rinha
+    command:
+      - -port=8082
     build:
       context: .
       dockerfile: ./api/Dockerfile
-    environment:
-      - PORT=8082
     ports:
       - 8082:8082
-      - 9040:9040 # debugger port
     volumes:
       - ./api:/opt/rinha/api
     deploy:

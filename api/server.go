@@ -1,57 +1,24 @@
 package api
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"log/slog"
-	"net/http"
-	"os"
-	"sync"
-	"time"
-
-	"github.com/jackc/pgx/v5"
+	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const (
-	defaultIdleTimeout    = time.Minute
-	defaultReadTimeout    = 5 * time.Second
-	defaultWriteTimeout   = 10 * time.Second
-	defaultShutdownPeriod = 30 * time.Second
-)
-
 type App struct {
-	Conn *pgx.Conn
-	Ctx  context.Context
 	Pool *pgxpool.Pool
-	wg   sync.WaitGroup
 }
 
-func (a *App) ServeHTTP() error {
-	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%s", os.Getenv("PORT")),
-		Handler:      a.routes(),
-		IdleTimeout:  defaultIdleTimeout,
-		ReadTimeout:  defaultReadTimeout,
-		WriteTimeout: defaultWriteTimeout,
-	}
+func NewServer(pool *pgxpool.Pool) *fiber.App {
+	app := fiber.New(fiber.Config{
+		Prefork:       true,
+		CaseSensitive: true,
+	})
 
-	log.Print("starting server", slog.Group("server", "addr", srv.Addr))
-	return srv.ListenAndServe()
-}
+	a := &App{Pool: pool}
 
-func JSON(w http.ResponseWriter, data any) error {
-	js, err := json.MarshalIndent(data, "", "\t")
-	if err != nil {
-		return err
-	}
+	app.Get("/clientes/:id/extrato", a.extrato)
+	app.Post("/clientes/:id/transacoes", a.transacoes)
 
-	js = append(js, '\n')
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
-
-	return nil
+	return app
 }

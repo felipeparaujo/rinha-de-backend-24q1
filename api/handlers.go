@@ -1,15 +1,17 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+var ErrInvalidTransacoesRequest = errors.New("invalid request")
 
 type ExtratoResponse struct {
 	Saldo             ExtratSaldoResponse        `json:"saldo"`
@@ -43,15 +45,14 @@ func validateID(id string) int {
 	return http.StatusOK
 }
 
-func (a *App) extrato(w http.ResponseWriter, r *http.Request) int {
-	id := r.PathValue("id")
-	idStatus := validateID(id)
-	if idStatus != http.StatusOK {
-		return idStatus
+func (a *App) extrato(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil || id < 1 || id > 5 {
+		return c.SendStatus(http.StatusNotFound)
 	}
 
 	rows, err := a.Pool.Query(
-		a.Ctx, `
+		c.Context(), `
 		SELECT
 			c.saldo, c.limite, t.valor, t.tipo, t.descricao, t.realizada_em
 		FROM clientes c LEFT JOIN (
@@ -66,7 +67,7 @@ func (a *App) extrato(w http.ResponseWriter, r *http.Request) int {
 	)
 	if err != nil {
 		log.Print(err)
-		return http.StatusInternalServerError
+		return c.SendStatus(http.StatusInternalServerError)
 	}
 
 	resp := ExtratoResponse{Saldo: ExtratSaldoResponse{DataExtrato: time.Now()}, UltimasTransacoes: []ExtratoTransacaoResponse{}}
@@ -75,7 +76,7 @@ func (a *App) extrato(w http.ResponseWriter, r *http.Request) int {
 		err := rows.Scan(&resp.Saldo.Total, &resp.Saldo.Limite, &transacao.Valor, &transacao.Tipo, &transacao.Descricao, &transacao.RealizadaEm)
 		if err != nil {
 			log.Print(err)
-			return http.StatusInternalServerError
+			return c.SendStatus(http.StatusInternalServerError)
 		}
 
 		// even if there are no transactions we'll get a row back because of the left join
@@ -85,12 +86,7 @@ func (a *App) extrato(w http.ResponseWriter, r *http.Request) int {
 		}
 	}
 
-	if err := JSON(w, resp); err != nil {
-		log.Print(err)
-		return http.StatusInternalServerError
-	}
-
-	return http.StatusOK
+	return c.Status(http.StatusOK).JSON(resp)
 }
 
 type TransacoesRequest struct {
@@ -99,21 +95,21 @@ type TransacoesRequest struct {
 	Descricao string `json:"descricao"`
 }
 
-func (t *TransacoesRequest) validate() int {
+func (t *TransacoesRequest) validate() error {
 	if t.Valor < 1 {
-		return http.StatusUnprocessableEntity
+		return ErrInvalidTransacoesRequest
 	}
 
 	descLen := len(t.Descricao)
 	if descLen < 1 || descLen > 10 {
-		return http.StatusUnprocessableEntity
+		return ErrInvalidTransacoesRequest
 	}
 
 	if t.Tipo != "d" && t.Tipo != "c" {
-		return http.StatusUnprocessableEntity
+		return ErrInvalidTransacoesRequest
 	}
 
-	return http.StatusOK
+	return nil
 }
 
 type TransacoesResponse struct {
@@ -121,54 +117,44 @@ type TransacoesResponse struct {
 	Saldo  int32 `json:"saldo"`
 }
 
-func (a *App) transacoes(w http.ResponseWriter, r *http.Request) int {
-	defer r.Body.Close()
-
+func (a *App) transacoes(c *fiber.Ctx) error {
 	req := TransacoesRequest{}
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		return http.StatusBadRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.SendStatus(http.StatusBadRequest)
 	}
 
-	status := req.validate()
-	if status != http.StatusOK {
-		return status
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil || id < 1 || id > 5 {
+		return c.SendStatus(http.StatusNotFound)
 	}
 
-	id := r.PathValue("id")
-	idStatus := validateID(id)
-	if idStatus != http.StatusOK {
-		return idStatus
+	if err := req.validate(); err != nil {
+		return c.SendStatus(http.StatusUnprocessableEntity)
 	}
 
-	rows, err := a.Pool.Query(a.Ctx, "SELECT * FROM process_transaction($1, $2, $3, $4)", id, req.Tipo, req.Descricao, req.Valor)
+	rows, err := a.Pool.Query(c.Context(), "SELECT * FROM process_transaction($1, $2, $3, $4)", id, req.Tipo, req.Descricao, req.Valor)
 	if err != nil {
 		log.Print(err)
-		return http.StatusInternalServerError
+		return c.SendStatus(http.StatusInternalServerError)
 	}
 
 	if !rows.Next() {
 		var pgErr *pgconn.PgError
 		// error code for below withdrawl limit
 		if errors.As(rows.Err(), &pgErr) && pgErr.Code == "90001" {
-			return http.StatusUnprocessableEntity
+			return c.SendStatus(http.StatusUnprocessableEntity)
 		}
 
 		// todo this happens when there's an underflow too
-		return http.StatusInternalServerError
+		return c.SendStatus(http.StatusUnprocessableEntity)
 	}
 
 	resp := TransacoesResponse{}
 	err = rows.Scan(&resp.Saldo, &resp.Limite)
 	if err != nil {
 		log.Print(err)
-		return http.StatusInternalServerError
+		return c.SendStatus(http.StatusUnprocessableEntity)
 	}
 
-	if err := JSON(w, resp); err != nil {
-		log.Print(err)
-		return http.StatusInternalServerError
-	}
-
-	return http.StatusOK
+	return c.Status(http.StatusOK).JSON(resp)
 }
