@@ -51,7 +51,7 @@ func (a *App) extrato(c *fiber.Ctx) error {
 		return c.SendStatus(http.StatusNotFound)
 	}
 
-	rows, err := a.Pool.Query(
+	rows, err := a.pool.Query(
 		c.Context(), `
 		SELECT
 			c.saldo, c.limite, t.valor, t.tipo, t.descricao, t.realizada_em
@@ -132,7 +132,7 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 		return c.SendStatus(http.StatusUnprocessableEntity)
 	}
 
-	rows, err := a.Pool.Query(c.Context(), "SELECT * FROM process_transaction($1, $2, $3, $4)", id, req.Tipo, req.Descricao, req.Valor)
+	rows, err := a.pool.Query(c.Context(), "SELECT * FROM process_transaction($1, $2, $3, $4)", id, req.Tipo, req.Descricao, req.Valor)
 	if err != nil {
 		log.Print(err)
 		return c.SendStatus(http.StatusInternalServerError)

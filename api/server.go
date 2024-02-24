@@ -1,24 +1,43 @@
 package api
 
 import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type App struct {
-	Pool *pgxpool.Pool
+	Port      int
+	DBConnStr string
+	pool      *pgxpool.Pool
 }
 
-func NewServer(pool *pgxpool.Pool) *fiber.App {
-	app := fiber.New(fiber.Config{
+func (a *App) Listen() error {
+	ctx := context.Background()
+
+	config, err := pgxpool.ParseConfig(a.DBConnStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	for pool.Ping(ctx) != nil {
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	a.pool = pool
+
+	srv := fiber.New(fiber.Config{
 		Prefork:       true,
 		CaseSensitive: true,
 	})
 
-	a := &App{Pool: pool}
+	srv.Get("/clientes/:id/extrato", a.extrato)
+	srv.Post("/clientes/:id/transacoes", a.transacoes)
 
-	app.Get("/clientes/:id/extrato", a.extrato)
-	app.Post("/clientes/:id/transacoes", a.transacoes)
-
-	return app
+	return srv.Listen(fmt.Sprintf(":%d", a.Port))
 }
