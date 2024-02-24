@@ -38,7 +38,7 @@ func (a *App) Listen() error {
 	a.pool = pool
 
 	srv := fiber.New(fiber.Config{
-		Prefork:       true,
+		// Prefork:       true,
 		CaseSensitive: true,
 	})
 

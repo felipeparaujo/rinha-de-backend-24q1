@@ -7,6 +7,7 @@ services:
     working_dir: /opt/rinha
     command:
       - -port=8080
+      - -cpu-profile=api/cpu-api1.prof
     build:
       context: .
       dockerfile: ./api/Dockerfile
@@ -17,12 +18,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.6"
-          memory: "155MB"
+          cpus: "0.4"
+          memory: "100MB"
 
   api2:
     <<: *api
     container_name: api2
+    command:
+      - -port=8080
+      - -cpu-profile=api/cpu-api2.prof
     hostname: api2
     ports:
       - 8082:8080
@@ -38,8 +42,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.17"
-          memory: "130MB"
+          cpus: "0.2"
+          memory: "124MB"
 
   db:
     image: postgres:latest
@@ -49,6 +53,10 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_USER=admin
       - POSTGRES_DB=rinha
+    command:
+      - postgres
+      - -c
+      - config_file=/docker-entrypoint-initdb.d/postgresql.conf
     ports:
       - 5432:5432
     volumes:
@@ -56,5 +64,5 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.13"
-          memory: "140MB"
+          cpus: "0.5"
+          memory: "226MB"
