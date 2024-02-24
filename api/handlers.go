@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
 )
 
 var ErrInvalidTransacoesRequest = errors.New("invalid request")
@@ -132,21 +133,59 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 		return c.SendStatus(http.StatusUnprocessableEntity)
 	}
 
-	rows, err := a.pool.Query(c.Context(), "SELECT * FROM process_transaction($1, $2, $3, $4)", id, req.Tipo, req.Descricao, req.Valor)
-	defer rows.Close()
-	if err != nil {
-		log.Print(err)
-		return c.SendStatus(http.StatusInternalServerError)
-	}
-
 	resp := TransacoesResponse{}
-	for rows.Next() {
-		err = rows.Scan(&resp.Saldo, &resp.Limite)
-		// process_transaction uses -1 in Limite as a flag for overdraft
-		if err != nil || resp.Limite < 0 {
+	if err := a.runInTransaction(c, func(tx pgx.Tx) error {
+		rows, err := tx.Query(c.Context(), "SELECT saldo, limite FROM clientes WHERE id = $1 FOR UPDATE", id)
+		if err != nil {
+			return c.SendStatus(http.StatusInternalServerError)
+		}
+
+		for rows.Next() {
+			if err = rows.Scan(&resp.Saldo, &resp.Limite); err != nil {
+				return c.SendStatus(http.StatusInternalServerError)
+			}
+		}
+
+		saldoFinal := resp.Saldo + req.Valor
+		if req.Tipo == "d" {
+			saldoFinal = resp.Saldo - req.Valor
+		}
+
+		if saldoFinal < -resp.Limite {
 			return c.SendStatus(http.StatusUnprocessableEntity)
 		}
+
+		update, err := tx.Query(c.Context(), "UPDATE clientes SET saldo = $1 WHERE id = $2", saldoFinal, id)
+		update.Next()
+		if err != nil {
+			return c.SendStatus(http.StatusInternalServerError)
+		}
+
+		resp.Saldo = saldoFinal
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	insert, err := a.pool.Query(
+		c.Context(),
+		"INSERT INTO transacoes (cliente_id, valor, tipo, descricao) VALUES ($1, $2, $3, $4)", id, req.Valor, req.Tipo, req.Descricao,
+	)
+	insert.Next()
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
 	}
 
 	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (a *App) runInTransaction(c *fiber.Ctx, h func(pgx.Tx) error) error {
+	tx, err := a.pool.BeginTx(c.Context(), pgx.TxOptions{})
+	if err = h(tx); err != nil {
+		tx.Rollback(c.Context())
+		return err
+	}
+
+	return tx.Commit(c.Context())
 }

@@ -24,9 +24,6 @@ func (a *App) Listen() error {
 		log.Fatal(err)
 	}
 
-	config.MinConns = 2
-	config.MaxConns = 4
-
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return err

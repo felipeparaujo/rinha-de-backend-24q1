@@ -13,8 +13,8 @@ const url = "http://localhost:9999"
 const contentType = "application/json"
 
 func main() {
-	// log.Println("Transacao")
-	// transacao()
+	log.Println("Transacao")
+	transacao()
 
 	log.Println("Extrato")
 	extrato()
@@ -27,7 +27,7 @@ type TransacoesRequest struct {
 }
 
 func transacao() {
-	marshaled, err := json.Marshal(TransacoesRequest{Valor: 1, Tipo: "c", Descricao: "toma"})
+	marshaled, err := json.Marshal(TransacoesRequest{Valor: 1, Tipo: "d", Descricao: "toma"})
 	r, err := http.DefaultClient.Post(fmt.Sprintf("%s/clientes/%d/transacoes", url, 1), contentType, bytes.NewBuffer(marshaled))
 	if err != nil {
 		log.Fatal(err)
