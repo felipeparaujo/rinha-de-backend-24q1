@@ -7,7 +7,6 @@ services:
     working_dir: /opt/rinha
     command:
       - -port=8080
-      - -cpu-profile=api/cpu-api1.prof
     build:
       context: .
       dockerfile: ./api/Dockerfile
@@ -18,15 +17,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.4"
-          memory: "100MB"
+          cpus: "0.35"
+          memory: "97MB"
 
   api2:
     <<: *api
     container_name: api2
     command:
       - -port=8080
-      - -cpu-profile=api/cpu-api2.prof
     hostname: api2
     ports:
       - 8082:8080
@@ -43,7 +41,7 @@ services:
       resources:
         limits:
           cpus: "0.2"
-          memory: "124MB"
+          memory: "100MB"
 
   db:
     image: postgres:latest
@@ -64,5 +62,5 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: "226MB"
+          cpus: "0.55"
+          memory: "256MB"
