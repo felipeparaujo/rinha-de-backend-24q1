@@ -31,37 +31,40 @@ type ExtratoTransacaoResponse struct {
 	RealizadaEm *time.Time `json:"realizada_em"`
 }
 
-func validateID(id string) int {
-	idNum, err := strconv.Atoi(id)
-	if err != nil {
-		log.Print(err)
-		return http.StatusBadRequest
-	}
-
-	if idNum < 1 || idNum > 5 {
-		return http.StatusNotFound
-	}
-
-	return http.StatusOK
-}
-
 func (a *App) extrato(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil || id < 1 || id > 5 {
 		return c.SendStatus(http.StatusNotFound)
 	}
 
+	// TODO: Query both tables in parallel.
+	resp := ExtratoResponse{Saldo: ExtratSaldoResponse{DataExtrato: time.Now()}, UltimasTransacoes: []ExtratoTransacaoResponse{}}
+	row := a.pool.QueryRow(
+		c.Context(), `
+		SELECT
+            saldo,
+            limite
+		FROM clientes
+			WHERE id = $1
+			LIMIT 1
+		`,
+		id,
+	)
+	// After calling Scan(), the connection is automatically returned to the pool.
+	err = row.Scan(&resp.Saldo.Total, &resp.Saldo.Limite)
+	if err != nil {
+		log.Print(err)
+		return c.SendStatus(http.StatusInternalServerError)
+	}
+
 	rows, err := a.pool.Query(
 		c.Context(), `
 		SELECT
-			c.saldo, c.limite, t.valor, t.tipo, t.descricao, t.realizada_em
-		FROM clientes c LEFT JOIN (
-			SELECT * FROM transacoes
+			valor, tipo, descricao, realizada_em
+		FROM transacoes
 			WHERE cliente_id = $1
 			ORDER BY realizada_em DESC
 			LIMIT 10
-		) t ON c.id = t.cliente_id
-		WHERE c.id = $1
 		`,
 		id,
 	)
@@ -71,20 +74,15 @@ func (a *App) extrato(c *fiber.Ctx) error {
 		return c.SendStatus(http.StatusInternalServerError)
 	}
 
-	resp := ExtratoResponse{Saldo: ExtratSaldoResponse{DataExtrato: time.Now()}, UltimasTransacoes: []ExtratoTransacaoResponse{}}
 	for rows.Next() {
 		transacao := ExtratoTransacaoResponse{}
-		err := rows.Scan(&resp.Saldo.Total, &resp.Saldo.Limite, &transacao.Valor, &transacao.Tipo, &transacao.Descricao, &transacao.RealizadaEm)
+		err := rows.Scan(&transacao.Valor, &transacao.Tipo, &transacao.Descricao, &transacao.RealizadaEm)
 		if err != nil {
 			log.Print(err)
 			return c.SendStatus(http.StatusInternalServerError)
 		}
 
-		// even if there are no transactions we'll get a row back because of the left join
-		// so check if we've actually got a transaction before appending
-		if transacao.RealizadaEm != nil {
-			resp.UltimasTransacoes = append(resp.UltimasTransacoes, transacao)
-		}
+		resp.UltimasTransacoes = append(resp.UltimasTransacoes, transacao)
 	}
 
 	return c.Status(http.StatusOK).JSON(resp)
