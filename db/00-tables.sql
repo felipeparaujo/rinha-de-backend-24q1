@@ -1,19 +1,17 @@
 ALTER DATABASE rinha SET log_error_verbosity to 'TERSE';
 
-CREATE TABLE clientes (
+CREATE UNLOGGED TABLE ledger (
   id SERIAL PRIMARY KEY,
-  nome VARCHAR(255) NOT NULL,
-  limite INTEGER NOT NULL,
-  saldo INTEGER NOT NULL DEFAULT 0
+  client_id INTEGER NOT NULL,
+  client_limit INTEGER NOT NULL,
+  client_balance INTEGER NOT NULL,
+  transaction_value INTEGER NOT NULL,
+  transaction_type CHAR NOT NULL,
+  transaction_description VARCHAR(10) NOT NULL,
+  client_transaction_count INTEGER DEFAULT 0,
+  is_seed_transaction BOOLEAN DEFAULT FALSE,
+  create_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE transacoes (
-  id SERIAL PRIMARY KEY,
-  cliente_id INTEGER NOT NULL,
-  valor INTEGER NOT NULL,
-  descricao VARCHAR(10) NOT NULL,
-  realizada_em TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_cliente FOREIGN KEY (cliente_id) REFERENCES clientes (id)
-);
-
-CREATE INDEX idx_realizada_em ON transacoes(realizada_em);
+CREATE UNIQUE INDEX idx_ledger_client_id_client_transaction_count ON ledger (client_id, client_transaction_count DESC);
+CREATE INDEX idx_ledger_client_transaction_count ON ledger (client_transaction_count DESC);

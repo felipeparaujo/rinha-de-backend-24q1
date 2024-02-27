@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -14,11 +13,11 @@ import (
 var ErrInvalidTransacoesRequest = errors.New("invalid request")
 
 type ExtratoResponse struct {
-	Saldo             ExtratSaldoResponse        `json:"saldo"`
+	Saldo             ExtratoSaldoResponse       `json:"saldo"`
 	UltimasTransacoes []ExtratoTransacaoResponse `json:"ultimas_transacoes"`
 }
 
-type ExtratSaldoResponse struct {
+type ExtratoSaldoResponse struct {
 	Total       int32     `json:"total"`
 	DataExtrato time.Time `json:"data_extrato"`
 	Limite      int32     `json:"limite"`
@@ -37,61 +36,42 @@ func (a *App) extrato(c *fiber.Ctx) error {
 		return c.SendStatus(http.StatusNotFound)
 	}
 
-	// TODO: Query both tables in parallel.
-
-	resp := ExtratoResponse{Saldo: ExtratSaldoResponse{DataExtrato: time.Now()}, UltimasTransacoes: []ExtratoTransacaoResponse{}}
-	row := a.pool.QueryRow(
-		c.Context(), `
-		SELECT
-            saldo,
-            limite
-		FROM clientes
-			WHERE id = $1
-			LIMIT 1
-		`,
-		id,
-	)
-	err = row.Scan(&resp.Saldo.Total, &resp.Saldo.Limite)
-	// After calling Scan(), the connection is automatically returned to the pool.
-	if err != nil {
-		log.Print(err)
-		return c.SendStatus(http.StatusInternalServerError)
-	}
-	resp.Saldo.Limite *= -1
-
-	rows, err := a.pool.Query(
-		c.Context(), `
-		SELECT
-			valor, descricao, realizada_em
-		FROM transacoes
-			WHERE cliente_id = $1
-			ORDER BY realizada_em DESC
-			LIMIT 10
-		`,
-		id,
-	)
-	defer rows.Close()
-	if err != nil {
-		log.Print(err)
-		return c.SendStatus(http.StatusInternalServerError)
-	}
-
-	for rows.Next() {
-		transacao := ExtratoTransacaoResponse{}
-		err := rows.Scan(&transacao.Valor, &transacao.Descricao, &transacao.RealizadaEm)
+	resp := ExtratoResponse{Saldo: ExtratoSaldoResponse{DataExtrato: time.Now()}, UltimasTransacoes: []ExtratoTransacaoResponse{}}
+	if err := a.runInTransaction(c, func(tx pgx.Tx) error {
+		rows, err := tx.Query(c.Context(), Select10LatestTransactionsForUser, id)
+		defer func() { rows.Close() }()
 		if err != nil {
-			log.Print(err)
 			return c.SendStatus(http.StatusInternalServerError)
 		}
 
-		if transacao.Valor > 0 {
-			transacao.Tipo = "c"
-		} else {
-			transacao.Tipo = "d"
-			transacao.Valor *= -1
+		for rows.Next() {
+			transacao := ExtratoTransacaoResponse{}
+			err := rows.Scan(&transacao.Valor, &transacao.Tipo, &transacao.Descricao, &transacao.RealizadaEm)
+			if err != nil {
+				return c.SendStatus(http.StatusInternalServerError)
+			}
+
+			// debit transactions are stored as negative values, but users expect them to be positive
+			if transacao.Tipo == "d" {
+				transacao.Valor *= -1
+			}
+
+			resp.UltimasTransacoes = append(resp.UltimasTransacoes, transacao)
 		}
-		resp.UltimasTransacoes = append(resp.UltimasTransacoes, transacao)
+
+		if err = tx.
+			QueryRow(c.Context(), SelectBalanceAndLimitForUser, id).
+			Scan(&resp.Saldo.Total, &resp.Saldo.Limite); err != nil {
+			return c.SendStatus(http.StatusInternalServerError)
+		}
+
+		return nil
+	}); err != nil {
+		return err
 	}
+
+	// we store limit as a negative number, but users expect it to be positive
+	resp.Saldo.Limite *= -1
 
 	return c.Status(http.StatusOK).JSON(resp)
 }
@@ -100,6 +80,11 @@ type TransacoesRequest struct {
 	Valor     int32  `json:"valor"`
 	Tipo      string `json:"tipo"`
 	Descricao string `json:"descricao"`
+}
+
+type TransacoesResponse struct {
+	Limite int32 `json:"limite"`
+	Saldo  int32 `json:"saldo"`
 }
 
 func (t *TransacoesRequest) validate() error {
@@ -119,11 +104,6 @@ func (t *TransacoesRequest) validate() error {
 	return nil
 }
 
-type TransacoesResponse struct {
-	Limite int32 `json:"limite"`
-	Saldo  int32 `json:"saldo"`
-}
-
 func (a *App) transacoes(c *fiber.Ctx) error {
 	req := TransacoesRequest{}
 	if err := c.BodyParser(&req); err != nil {
@@ -140,37 +120,44 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 	}
 
 	resp := TransacoesResponse{}
+	rows, err := a.transact(c, id, req.Valor, req.Descricao, req.Tipo)
+	defer func() { rows.Close() }()
 
-	valor := req.Valor
-	if req.Tipo == "d" {
-		valor *= -1
+	if err != nil {
+		return c.SendStatus(http.StatusInternalServerError)
 	}
 
-	numTransactionAttempts := 10
-	for i := 0; i < numTransactionAttempts; i++ {
-		if err := a.runInTransaction(c, func(tx pgx.Tx) error {
-			row := tx.QueryRow(
-				c.Context(),
-				"SELECT * FROM process_transaction($1, $2, $3)",
-				id,
-				req.Descricao,
-				req.Valor)
-			err := row.Scan(&resp.Saldo, &resp.Limite)
-			if err != nil {
-				return err
-			}
-			resp.Limite *= -1
-			return nil
-		}); err == nil {
-			return c.Status(http.StatusOK).JSON(resp)
+	for rows.Next() {
+		var rowsUpdated int32
+		if err = rows.Scan(&resp.Limite, &resp.Saldo, &rowsUpdated); err != nil {
+			return c.SendStatus(http.StatusInternalServerError)
+		}
+
+		if rowsUpdated != 1 {
+			return c.SendStatus(http.StatusUnprocessableEntity)
 		}
 	}
 
-	return c.SendStatus(http.StatusLocked)
+	// we store limit as a negative number, but users expect it to be positive
+	resp.Limite *= -1
+
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (a *App) transact(c *fiber.Ctx, id int, valor int32, descricao string, tipo string) (pgx.Rows, error) {
+	if tipo == "d" {
+		valor *= -1
+	}
+
+	return a.pool.Query(c.Context(), CreateTransaction, id, valor, tipo, descricao)
 }
 
 func (a *App) runInTransaction(c *fiber.Ctx, h func(pgx.Tx) error) error {
-	tx, err := a.pool.BeginTx(c.Context(), pgx.TxOptions{IsoLevel: "serializable"})
+	tx, err := a.pool.BeginTx(c.Context(), pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+
 	if err = h(tx); err != nil {
 		tx.Rollback(c.Context())
 		return err

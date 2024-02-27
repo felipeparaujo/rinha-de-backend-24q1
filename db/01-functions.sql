@@ -1,21 +1,42 @@
-CREATE OR REPLACE FUNCTION process_transaction(
-    cliente_id INT,
-    descricao TEXT,
-    valor INT
+-- insert transaction into ledger using an optimistic lock approach
+CREATE OR REPLACE FUNCTION create_transaction(
+    in_client_id INTEGER,
+    -- if in_type == 'd', in_value must be negative. if in_type == 'c', in_value must be positive
+    in_value INTEGER,
+    in_type CHAR,
+    in_description VARCHAR(10),
+    OUT out_limit INTEGER,
+    OUT out_balance INTEGER,
+    OUT out_updated_row_count INTEGER
 )
-RETURNS TABLE (new_saldo INT, client_limite INT)
-LANGUAGE plpgsql
+RETURNS RECORD
+LANGUAGE 'plpgsql'
 AS $$
-BEGIN 
-    SELECT saldo + valor, limite INTO new_saldo, client_limite FROM clientes WHERE id = cliente_id;
+DECLARE
+    pending BOOLEAN := TRUE;
+    t_count INTEGER;
+BEGIN
+    out_updated_row_count := 0;
 
-    IF new_saldo < client_limite THEN
-        RAISE EXCEPTION 'New saldo %s is below the limit %s', new_saldo, client_limite;
-    END IF;
+    WHILE pending LOOP
+        SELECT client_limit, client_balance + in_value, client_transaction_count INTO out_limit, out_balance, t_count
+        FROM ledger
+        WHERE client_id = in_client_id
+        ORDER BY client_transaction_count DESC
+        LIMIT 1;
 
-    UPDATE clientes SET saldo = new_saldo WHERE id = cliente_id;
-    INSERT INTO transacoes (cliente_id, descricao, valor) VALUES (cliente_id, descricao, valor);
+        IF out_balance < out_limit THEN
+            RETURN;
+        END IF;
 
-    RETURN QUERY SELECT new_saldo, client_limite;
-END
+        BEGIN
+            INSERT INTO ledger (client_id, client_limit, client_balance, transaction_value, transaction_type, transaction_description, client_transaction_count)
+            VALUES (in_client_id, out_limit, out_balance, in_value, in_type, in_description, t_count + 1);
+
+            GET DIAGNOSTICS out_updated_row_count = ROW_COUNT;
+            pending := FALSE;
+        EXCEPTION WHEN unique_violation THEN
+        END;
+    END LOOP;
+END;
 $$;
