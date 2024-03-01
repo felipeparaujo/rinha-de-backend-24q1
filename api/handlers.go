@@ -25,10 +25,10 @@ type ExtratSaldoResponse struct {
 }
 
 type ExtratoTransacaoResponse struct {
-	Valor       *int32     `json:"valor"`
-	Tipo        *string    `json:"tipo"`
-	Descricao   *string    `json:"descricao"`
-	RealizadaEm *time.Time `json:"realizada_em"`
+	Valor       int32     `json:"valor"`
+	Tipo        string    `json:"tipo"`
+	Descricao   string    `json:"descricao"`
+	RealizadaEm time.Time `json:"realizada_em"`
 }
 
 func (a *App) extrato(c *fiber.Ctx) error {
@@ -38,6 +38,7 @@ func (a *App) extrato(c *fiber.Ctx) error {
 	}
 
 	// TODO: Query both tables in parallel.
+
 	resp := ExtratoResponse{Saldo: ExtratSaldoResponse{DataExtrato: time.Now()}, UltimasTransacoes: []ExtratoTransacaoResponse{}}
 	row := a.pool.QueryRow(
 		c.Context(), `
@@ -50,17 +51,18 @@ func (a *App) extrato(c *fiber.Ctx) error {
 		`,
 		id,
 	)
-	// After calling Scan(), the connection is automatically returned to the pool.
 	err = row.Scan(&resp.Saldo.Total, &resp.Saldo.Limite)
+	// After calling Scan(), the connection is automatically returned to the pool.
 	if err != nil {
 		log.Print(err)
 		return c.SendStatus(http.StatusInternalServerError)
 	}
+	resp.Saldo.Limite *= -1
 
 	rows, err := a.pool.Query(
 		c.Context(), `
 		SELECT
-			valor, tipo, descricao, realizada_em
+			valor, descricao, realizada_em
 		FROM transacoes
 			WHERE cliente_id = $1
 			ORDER BY realizada_em DESC
@@ -76,12 +78,18 @@ func (a *App) extrato(c *fiber.Ctx) error {
 
 	for rows.Next() {
 		transacao := ExtratoTransacaoResponse{}
-		err := rows.Scan(&transacao.Valor, &transacao.Tipo, &transacao.Descricao, &transacao.RealizadaEm)
+		err := rows.Scan(&transacao.Valor, &transacao.Descricao, &transacao.RealizadaEm)
 		if err != nil {
 			log.Print(err)
 			return c.SendStatus(http.StatusInternalServerError)
 		}
 
+		if transacao.Valor > 0 {
+			transacao.Tipo = "c"
+		} else {
+			transacao.Tipo = "d"
+			transacao.Valor *= -1
+		}
 		resp.UltimasTransacoes = append(resp.UltimasTransacoes, transacao)
 	}
 
@@ -132,54 +140,37 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 	}
 
 	resp := TransacoesResponse{}
-	if err := a.runInTransaction(c, func(tx pgx.Tx) error {
-		rows, err := tx.Query(c.Context(), "SELECT saldo, limite FROM clientes WHERE id = $1 FOR UPDATE", id)
-		if err != nil {
-			return c.SendStatus(http.StatusInternalServerError)
-		}
 
-		for rows.Next() {
-			if err = rows.Scan(&resp.Saldo, &resp.Limite); err != nil {
-				return c.SendStatus(http.StatusInternalServerError)
+	valor := req.Valor
+	if req.Tipo == "d" {
+		valor *= -1
+	}
+
+	numTransactionAttempts := 10
+	for i := 0; i < numTransactionAttempts; i++ {
+		if err := a.runInTransaction(c, func(tx pgx.Tx) error {
+			row := tx.QueryRow(
+				c.Context(),
+				"SELECT * FROM process_transaction($1, $2, $3)",
+				id,
+				req.Descricao,
+				req.Valor)
+			err := row.Scan(&resp.Saldo, &resp.Limite)
+			if err != nil {
+				return err
 			}
+			resp.Limite *= -1
+			return nil
+		}); err == nil {
+			return c.Status(http.StatusOK).JSON(resp)
 		}
-
-		saldoFinal := resp.Saldo + req.Valor
-		if req.Tipo == "d" {
-			saldoFinal = resp.Saldo - req.Valor
-		}
-
-		if saldoFinal < -resp.Limite {
-			return c.SendStatus(http.StatusUnprocessableEntity)
-		}
-
-		update, err := tx.Query(c.Context(), "UPDATE clientes SET saldo = $1 WHERE id = $2", saldoFinal, id)
-		update.Next()
-		if err != nil {
-			return c.SendStatus(http.StatusInternalServerError)
-		}
-
-		resp.Saldo = saldoFinal
-
-		return nil
-	}); err != nil {
-		return err
 	}
 
-	insert, err := a.pool.Query(
-		c.Context(),
-		"INSERT INTO transacoes (cliente_id, valor, tipo, descricao) VALUES ($1, $2, $3, $4)", id, req.Valor, req.Tipo, req.Descricao,
-	)
-	insert.Next()
-	if err != nil {
-		c.Status(http.StatusInternalServerError)
-	}
-
-	return c.Status(http.StatusOK).JSON(resp)
+	return c.SendStatus(http.StatusLocked)
 }
 
 func (a *App) runInTransaction(c *fiber.Ctx, h func(pgx.Tx) error) error {
-	tx, err := a.pool.BeginTx(c.Context(), pgx.TxOptions{})
+	tx, err := a.pool.BeginTx(c.Context(), pgx.TxOptions{IsoLevel: "serializable"})
 	if err = h(tx); err != nil {
 		tx.Rollback(c.Context())
 		return err
