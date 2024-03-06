@@ -1,10 +1,11 @@
 module github.com/felipeparaujo/rinha-de-backend-24q1
 
-go 1.21
+go 1.22
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.1
 	github.com/jackc/pgx/v5 v5.5.3
+	github.com/valyala/fasthttp v1.52.0
 )
 
 require (
@@ -19,7 +20,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.52.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	golang.org/x/crypto v0.19.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
