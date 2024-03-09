@@ -14,9 +14,8 @@ import (
 const maxRetries = 100
 
 var (
-	cpuProfile   = flag.String("cpu-profile", "", "write cpu profile to file")
-	port         = flag.Int("port", 8080, "api port")
-	dbConnString = flag.String("db-conn-str", "postgres://admin:password@db:5432/rinha", "DB connection string")
+	cpuProfile = flag.String("cpu-profile", "", "write cpu profile to file")
+	port       = flag.Int("port", 8080, "api port")
 )
 
 func main() {
@@ -47,8 +46,7 @@ func main() {
 	}()
 
 	app := api.App{
-		Port:      int(*port),
-		DBConnStr: string(*dbConnString),
+		Port: int(*port),
 	}
 
 	if err := app.Listen(); err != nil {

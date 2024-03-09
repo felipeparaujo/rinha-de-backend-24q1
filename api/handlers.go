@@ -1,13 +1,14 @@
 package api
 
 import (
+	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5"
 )
 
 var ErrInvalidTransacoesRequest = errors.New("invalid request")
@@ -37,40 +38,37 @@ func (a *App) extrato(c *fiber.Ctx) error {
 	}
 
 	resp := ExtratoResponse{Saldo: ExtratoSaldoResponse{DataExtrato: time.Now()}, UltimasTransacoes: []ExtratoTransacaoResponse{}}
-	if err := a.runInTransaction(c, func(tx pgx.Tx) error {
-		rows, err := tx.Query(c.Context(), Select10LatestTransactionsForUser, id)
-		defer func() { rows.Close() }()
+
+	row := a.DBs[id-1].QueryRow(`SELECT l, b FROM u`)
+	err = row.Scan(&resp.Saldo.Limite, &resp.Saldo.Total)
+	if err != nil {
+		log.Print(err)
+		return c.SendStatus(http.StatusInternalServerError)
+	}
+
+	rows, err := a.DBs[id-1].Query(`SELECT t, a, d FROM t ORDER BY id DESC LIMIT 10`)
+	if err != nil {
+		log.Print(err)
+		return c.SendStatus(http.StatusInternalServerError)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		transacao := ExtratoTransacaoResponse{}
+		err := rows.Scan(&transacao.RealizadaEm, &transacao.Valor, &transacao.Descricao)
 		if err != nil {
 			return c.SendStatus(http.StatusInternalServerError)
 		}
 
-		for rows.Next() {
-			transacao := ExtratoTransacaoResponse{}
-			err := rows.Scan(&transacao.Valor, &transacao.Tipo, &transacao.Descricao, &transacao.RealizadaEm)
-			if err != nil {
-				return c.SendStatus(http.StatusInternalServerError)
-			}
-
-			// debit transactions are stored as negative values, but users expect them to be positive
-			if transacao.Tipo == "d" {
-				transacao.Valor *= -1
-			}
-
-			resp.UltimasTransacoes = append(resp.UltimasTransacoes, transacao)
+		// debit transactions are stored as negative values, but users expect them to be positive
+		transacao.Tipo = "c"
+		if transacao.Valor < 0 {
+			transacao.Valor *= -1
+			transacao.Tipo = "d"
 		}
 
-		if err = tx.
-			QueryRow(c.Context(), SelectBalanceAndLimitForUser, id).
-			Scan(&resp.Saldo.Total, &resp.Saldo.Limite); err != nil {
-			return c.SendStatus(http.StatusInternalServerError)
-		}
-
-		return nil
-	}); err != nil {
-		return err
+		resp.UltimasTransacoes = append(resp.UltimasTransacoes, transacao)
 	}
-
-	// we store limit as a negative number, but users expect it to be positive
 	resp.Saldo.Limite *= -1
 
 	return c.Status(http.StatusOK).JSON(resp)
@@ -120,48 +118,49 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 	}
 
 	resp := TransacoesResponse{}
-	rows, err := a.transact(c, id, req.Valor, req.Descricao, req.Tipo)
-	defer func() { rows.Close() }()
-
-	if err != nil {
-		return c.SendStatus(http.StatusInternalServerError)
+	balanceDiff := req.Valor
+	if req.Tipo == "d" {
+		balanceDiff *= -1
 	}
+	db := a.DBs[id-1]
+	for i := 0; i < 10; i++ {
+		tx, err := db.BeginTx(context.Background(), nil)
+		if err != nil {
+			log.Print(err)
+			continue
+		}
 
-	for rows.Next() {
-		var rowsUpdated int32
-		if err = rows.Scan(&resp.Limite, &resp.Saldo, &rowsUpdated); err != nil {
+		// Transaction started, there will be no more retries.
+		defer tx.Rollback()
+
+		err = tx.QueryRow("SELECT l, b + ? FROM u LIMIT 1", balanceDiff).Scan(&resp.Limite, &resp.Saldo)
+		if err != nil {
+			log.Print(err)
 			return c.SendStatus(http.StatusInternalServerError)
 		}
 
-		if rowsUpdated != 1 {
+		if resp.Saldo < resp.Limite {
 			return c.SendStatus(http.StatusUnprocessableEntity)
 		}
+
+		_, err = tx.Exec("INSERT INTO t (a, d) VALUES (?, ?)", balanceDiff, req.Descricao)
+		if err != nil {
+			log.Print(err)
+			return c.SendStatus(http.StatusInternalServerError)
+		}
+		_, err = tx.Exec("UPDATE u SET b = ? WHERE l = ?", resp.Saldo, resp.Limite)
+		if err != nil {
+			log.Print(err)
+			return c.SendStatus(http.StatusInternalServerError)
+		}
+		tx.Commit()
+
+		// we store limit as a negative number, but users expect it to be positive
+		resp.Limite *= -1
+
+		log.Print("attempts:", i)
+		return c.Status(http.StatusOK).JSON(resp)
 	}
 
-	// we store limit as a negative number, but users expect it to be positive
-	resp.Limite *= -1
-
-	return c.Status(http.StatusOK).JSON(resp)
-}
-
-func (a *App) transact(c *fiber.Ctx, id int, valor int32, descricao string, tipo string) (pgx.Rows, error) {
-	if tipo == "d" {
-		valor *= -1
-	}
-
-	return a.pool.Query(c.Context(), CreateTransaction, id, valor, tipo, descricao)
-}
-
-func (a *App) runInTransaction(c *fiber.Ctx, h func(pgx.Tx) error) error {
-	tx, err := a.pool.BeginTx(c.Context(), pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-
-	if err = h(tx); err != nil {
-		tx.Rollback(c.Context())
-		return err
-	}
-
-	return tx.Commit(c.Context())
+	return c.SendStatus(http.StatusLocked)
 }

@@ -1,42 +1,35 @@
 package api
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
-	"log"
-	"time"
+	"strconv"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/valyala/fasthttp/pprofhandler"
 )
 
 type App struct {
-	Port      int
-	DBConnStr string
-	pool      *pgxpool.Pool
+	Port int
+	DBs  []*sql.DB
 }
 
 func (a *App) Listen() error {
-	ctx := context.Background()
+	for i := 1; i <= 5; i++ {
+		file_name := "/db/" + strconv.Itoa(i) + ".db"
+		db, err := sql.Open("sqlite3", "file:"+file_name+"?_journal=wal&_synchronous=off&_txlock=exclusive")
+		if err != nil {
+			panic(err)
+		}
 
-	config, err := pgxpool.ParseConfig(a.DBConnStr)
-	if err != nil {
-		log.Fatal(err)
+		err = db.Ping()
+		if err != nil {
+			panic(err)
+		}
+
+		a.DBs = append(a.DBs, db)
 	}
-
-	pool, err := pgxpool.NewWithConfig(ctx, config)
-	if err != nil {
-		return err
-	}
-
-	defer pool.Close()
-
-	for pool.Ping(ctx) != nil {
-		time.Sleep(250 * time.Millisecond)
-	}
-
-	a.pool = pool
 
 	srv := fiber.New(fiber.Config{
 		Prefork:       true,
