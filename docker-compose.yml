@@ -12,11 +12,15 @@ services:
     build:
       context: .
       dockerfile: ./api/Dockerfile
+    volumes:
+      - db-data:/db
     deploy:
       resources:
         limits:
           cpus: "0.35"
           memory: "97MB"
+    depends_on:
+      - sqlite_initializer
 
   api2:
     <<: *api
@@ -39,24 +43,36 @@ services:
           cpus: "0.2"
           memory: "100MB"
 
-  db:
-    image: postgres:latest
-    hostname: db
-    container_name: db
-    environment:
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_USER=admin
-      - POSTGRES_DB=rinha
-    command:
-      - postgres
-      - -c
-      - config_file=/docker-entrypoint-initdb.d/postgresql.conf
-    ports:
-      - 5432:5432
+  sqlite_initializer:
+    container_name: sqlite_initializer
+    build:
+      context: .
+      dockerfile: ./sqlite/Dockerfile
     volumes:
-      - ./db:/docker-entrypoint-initdb.d
-    deploy:
-      resources:
-        limits:
-          cpus: "0.55"
-          memory: "256MB"
+      - db-data:/db
+
+volumes:
+  db-data:
+    name: db-data
+
+  # db:
+  #   image: postgres:latest
+  #   hostname: db
+  #   container_name: db
+  #   environment:
+  #     - POSTGRES_PASSWORD=password
+  #     - POSTGRES_USER=admin
+  #     - POSTGRES_DB=rinha
+  #   command:
+  #     - postgres
+  #     - -c
+  #     - config_file=/docker-entrypoint-initdb.d/postgresql.conf
+  #   ports:
+  #     - 5432:5432
+  #   volumes:
+  #     - ./db:/docker-entrypoint-initdb.d
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "0.55"
+  #         memory: "256MB"
