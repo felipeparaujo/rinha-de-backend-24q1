@@ -13,7 +13,7 @@ services:
       context: .
       dockerfile: ./api/Dockerfile
     volumes:
-      - db-data:/db
+      - matheuscamargo-db-data:/db
     deploy:
       resources:
         limits:
@@ -55,8 +55,13 @@ services:
       context: .
       dockerfile: ./sqlite/Dockerfile
     volumes:
-      - db-data:/db
+      - matheuscamargo-db-data:/db
+    deploy:
+      resources:
+        limits:
+          cpus: "0.0"
+          memory: "6MB"
 
 volumes:
-  db-data:
-    name: db-data
+  matheuscamargo-db-data:
+    name: matheuscamargo-db-data
