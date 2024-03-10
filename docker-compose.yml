@@ -7,6 +7,9 @@ services:
     hostname: api1
     image: matheusmcamargo/rinha-api:sqlite
     working_dir: /opt/rinha
+    build:
+      context: .
+      dockerfile: ./api/Dockerfile
     volumes:
       - matheuscamargo-db-data:/db
     deploy:
@@ -44,6 +47,9 @@ services:
     platform: linux/amd64
     hostname: db
     image: felipeparaujo/rinha-db:sqlite
+    build:
+      context: .
+      dockerfile: ./sqlite/Dockerfile
     volumes:
       - matheuscamargo-db-data:/db
     deploy:
