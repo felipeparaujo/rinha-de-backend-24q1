@@ -1,28 +1,37 @@
 package api
 
-const Select10LatestTransactionsForUser = `
-SELECT
-	transaction_value, transaction_type, transaction_description, create_time
-FROM
-	ledger
-WHERE
-	client_id = $1 AND is_seed_transaction = false
-ORDER BY
-  client_transaction_count DESC
-LIMIT 10
-`
+import "database/sql"
 
-const SelectBalanceAndLimitForUser = `
-SELECT
-	client_balance, client_limit
-FROM
-	ledger
-WHERE
-	client_id = $1
-ORDER BY
-	client_transaction_count DESC
-LIMIT 1`
+type PreparedQueries struct {
+	SelectLimitAndBalance    *sql.Stmt
+	SelectLast10Transactions *sql.Stmt
+	SelectLimitAndNewBalance *sql.Stmt
+	InsertTransaction        *sql.Stmt
+	UpdateBalance            *sql.Stmt
+}
 
-const CreateTransaction = `
-	SELECT out_limit, out_balance, out_updated_row_count FROM create_transaction($1, $2, $3, $4)
-`
+func PrepareQueries(db *sql.DB) (PreparedQueries, error) {
+	p := PreparedQueries{}
+	var err error
+	p.SelectLimitAndBalance, err = db.Prepare(`SELECT l, b FROM u`)
+	if err != nil {
+		return p, err
+	}
+	p.SelectLast10Transactions, err = db.Prepare(`SELECT t, a, d FROM t ORDER BY id DESC LIMIT 10`)
+	if err != nil {
+		return p, err
+	}
+	p.SelectLimitAndNewBalance, err = db.Prepare("SELECT l, b + ? FROM u LIMIT 1")
+	if err != nil {
+		return p, err
+	}
+	p.InsertTransaction, err = db.Prepare("INSERT INTO t (a, d) VALUES (?, ?)")
+	if err != nil {
+		return p, err
+	}
+	p.UpdateBalance, err = db.Prepare("UPDATE u SET b = ? WHERE l = ?")
+	if err != nil {
+		return p, err
+	}
+	return p, nil
+}

@@ -39,14 +39,15 @@ func (a *App) extrato(c *fiber.Ctx) error {
 
 	resp := ExtratoResponse{Saldo: ExtratoSaldoResponse{DataExtrato: time.Now()}, UltimasTransacoes: []ExtratoTransacaoResponse{}}
 
-	row := a.DBs[id-1].QueryRow(`SELECT l, b FROM u`)
+	preparedQueries := a.PreparedQueries[id-1]
+	row := preparedQueries.SelectLimitAndBalance.QueryRow()
 	err = row.Scan(&resp.Saldo.Limite, &resp.Saldo.Total)
 	if err != nil {
 		log.Print(err)
 		return c.SendStatus(http.StatusInternalServerError)
 	}
 
-	rows, err := a.DBs[id-1].Query(`SELECT t, a, d FROM t ORDER BY id DESC LIMIT 10`)
+	rows, err := preparedQueries.SelectLast10Transactions.Query()
 	if err != nil {
 		log.Print(err)
 		return c.SendStatus(http.StatusInternalServerError)
@@ -122,6 +123,7 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 	if req.Tipo == "d" {
 		balanceDiff *= -1
 	}
+	preparedQueries := a.PreparedQueries[id-1]
 	db := a.DBs[id-1]
 	for i := 0; i < 10; i++ {
 		tx, err := db.BeginTx(context.Background(), nil)
@@ -133,7 +135,7 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 		// Transaction started, there will be no more retries.
 		defer tx.Rollback()
 
-		err = tx.QueryRow("SELECT l, b + ? FROM u LIMIT 1", balanceDiff).Scan(&resp.Limite, &resp.Saldo)
+		err = tx.Stmt(preparedQueries.SelectLimitAndNewBalance).QueryRow(balanceDiff).Scan(&resp.Limite, &resp.Saldo)
 		if err != nil {
 			log.Print(err)
 			return c.SendStatus(http.StatusInternalServerError)
@@ -143,12 +145,12 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 			return c.SendStatus(http.StatusUnprocessableEntity)
 		}
 
-		_, err = tx.Exec("INSERT INTO t (a, d) VALUES (?, ?)", balanceDiff, req.Descricao)
+		_, err = tx.Stmt(preparedQueries.InsertTransaction).Exec(balanceDiff, req.Descricao)
 		if err != nil {
 			log.Print(err)
 			return c.SendStatus(http.StatusInternalServerError)
 		}
-		_, err = tx.Exec("UPDATE u SET b = ? WHERE l = ?", resp.Saldo, resp.Limite)
+		_, err = tx.Stmt(preparedQueries.UpdateBalance).Exec(resp.Saldo, resp.Limite)
 		if err != nil {
 			log.Print(err)
 			return c.SendStatus(http.StatusInternalServerError)
@@ -158,7 +160,6 @@ func (a *App) transacoes(c *fiber.Ctx) error {
 		// we store limit as a negative number, but users expect it to be positive
 		resp.Limite *= -1
 
-		log.Print("attempts:", i)
 		return c.Status(http.StatusOK).JSON(resp)
 	}
 
