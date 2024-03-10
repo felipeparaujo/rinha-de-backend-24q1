@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/valyala/fasthttp/pprofhandler"
 )
 
 type App struct {
@@ -44,6 +45,7 @@ func (a *App) Listen() error {
 
 	srv.Get("/clientes/:id/extrato", a.extrato)
 	srv.Post("/clientes/:id/transacoes", a.transacoes)
+	srv.Get("/debug/pprof/:profile?", func(c *fiber.Ctx) error { pprofhandler.PprofHandler(c.Context()); return nil })
 
 	return srv.Listen(fmt.Sprintf(":%d", a.Port))
 }
