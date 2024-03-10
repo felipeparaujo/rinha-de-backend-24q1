@@ -3,7 +3,9 @@ package api
 import (
 	"database/sql"
 	"fmt"
+	"math/rand"
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	_ "github.com/mattn/go-sqlite3"
@@ -16,6 +18,8 @@ type App struct {
 	PreparedQueries []PreparedQueries // One constructed from each DB.
 }
 
+var maxRetries = 100
+
 func (a *App) Listen() error {
 	for i := 1; i <= 5; i++ {
 		file_name := "/db/" + strconv.Itoa(i) + ".db"
@@ -24,9 +28,9 @@ func (a *App) Listen() error {
 			panic(err)
 		}
 
-		err = db.Ping()
-		if err != nil {
-			panic(err)
+		for db.Ping() != nil && maxRetries > 0 {
+			maxRetries--
+			time.Sleep(time.Duration(rand.Intn(250)) * time.Millisecond)
 		}
 
 		p, err := PrepareQueries(db)
