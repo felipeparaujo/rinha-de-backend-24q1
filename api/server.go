@@ -10,11 +10,10 @@ import (
 	"github.com/valyala/fasthttp/pprofhandler"
 )
 
-
 type App struct {
-	Port int
-	DBs  []*sql.DB
-    PreparedQueries []PreparedQueries // One constructed from each DB.
+	Port            int
+	DBs             []*sql.DB
+	PreparedQueries []PreparedQueries // One constructed from each DB.
 }
 
 func (a *App) Listen() error {
@@ -30,25 +29,22 @@ func (a *App) Listen() error {
 			panic(err)
 		}
 
-        p, err := PrepareQueries(db)
-        if err != nil {
-            panic(err)
-        }
+		p, err := PrepareQueries(db)
+		if err != nil {
+			panic(err)
+		}
 
 		a.DBs = append(a.DBs, db)
-        a.PreparedQueries = append (a.PreparedQueries, p)
+		a.PreparedQueries = append(a.PreparedQueries, p)
 	}
 
 	srv := fiber.New(fiber.Config{
-		Prefork:       true,
 		CaseSensitive: true,
 	})
 
 	srv.Get("/clientes/:id/extrato", a.extrato)
 	srv.Post("/clientes/:id/transacoes", a.transacoes)
 	srv.Get("/debug/pprof/:profile?", func(c *fiber.Ctx) error { pprofhandler.PprofHandler(c.Context()); return nil })
-
-
 
 	return srv.Listen(fmt.Sprintf(":%d", a.Port))
 }
