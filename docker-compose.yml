@@ -5,28 +5,21 @@ services:
     container_name: api1
     platform: linux/amd64
     hostname: api1
-    image: matheusmcamargo/rinha-api:ledger
+    image: matheusmcamargo/rinha-api:sqlite
     working_dir: /opt/rinha
-    command:
-      - -port=8080
-    build:
-      context: .
-      dockerfile: ./api/Dockerfile
     volumes:
       - matheuscamargo-db-data:/db
     deploy:
       resources:
         limits:
-          cpus: "0.35"
-          memory: "97MB"
+          cpus: "0.55"
+          memory: "195MB"
     depends_on:
       - db
 
   api2:
     <<: *api
     container_name: api2
-    command:
-      - -port=8080
     hostname: api2
 
   lb:
@@ -40,8 +33,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.2"
-          memory: "100MB"
+          cpus: "0.4"
+          memory: "154MB"
     depends_on:
       - api1
       - api2
@@ -51,9 +44,6 @@ services:
     platform: linux/amd64
     hostname: db
     image: felipeparaujo/rinha-db:sqlite
-    build:
-      context: .
-      dockerfile: ./sqlite/Dockerfile
     volumes:
       - matheuscamargo-db-data:/db
     deploy:
