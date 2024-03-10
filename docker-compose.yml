@@ -46,8 +46,11 @@ services:
       - api1
       - api2
 
-  sqlite_initializer:
-    container_name: sqlite_initializer
+  db:
+    container_name: db
+    platform: linux/amd64
+    hostname: db
+    image: felipeparaujo/rinha-db:sqlite
     build:
       context: .
       dockerfile: ./sqlite/Dockerfile
@@ -57,25 +60,3 @@ services:
 volumes:
   db-data:
     name: db-data
-
-  # db:
-  #   image: postgres:latest
-  #   hostname: db
-  #   container_name: db
-  #   environment:
-  #     - POSTGRES_PASSWORD=password
-  #     - POSTGRES_USER=admin
-  #     - POSTGRES_DB=rinha
-  #   command:
-  #     - postgres
-  #     - -c
-  #     - config_file=/docker-entrypoint-initdb.d/postgresql.conf
-  #   ports:
-  #     - 5432:5432
-  #   volumes:
-  #     - ./db:/docker-entrypoint-initdb.d
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: "0.55"
-  #         memory: "256MB"
