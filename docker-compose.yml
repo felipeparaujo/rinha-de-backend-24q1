@@ -20,7 +20,7 @@ services:
           cpus: "0.35"
           memory: "97MB"
     depends_on:
-      - sqlite_initializer
+      - db
 
   api2:
     <<: *api
